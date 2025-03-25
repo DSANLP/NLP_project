@@ -1,8 +1,12 @@
 ！！先分成以下几个步骤完成第一阶段的任务，`data preprocess`， `BM25`，`dense vector and FAISS`，`Qwen and prompt`，`UI`，`Hybrid`，大家选一下想做什么，然后去看相关方法，下次会议分享方法，代码也可以开始写了。后面还有选读论文，可以选好后，发群里。
 
+**async def**  
+
 ## data preprocess
 
-对`documents.jsonl `中的html格式内容预处理，转换成ai友好的md格式
+对`documents.jsonl `中的html格式内容预处理，转换成ai友好的md格式, 存在`.json`文件里, 别用`.csv`
+
+`\n` `<\br>`
 
 ## compulsory
 
@@ -11,6 +15,7 @@
 
 3. Answer Generation via Prompting Large Language Models (LLM): 
    * prompt engineering
+   * give the answer in `\{answer}\`
 
 restrict the usage to `Qwen/Qwen2.5-7B-Instruct ` as the LLM for generating answers via prompting. use API
 
@@ -31,6 +36,8 @@ Remark: 注意`train set`, `val set`, `test set`
 You should do experiments, explanation of why the method is effective, detailing your exploration process, comparing the performance of the new approach
 
 *  Hybrid Retrieval techniques  这是最常用的方法
+
+*  Hybrid: input : [query, one doc] -> score * 10
 
 * Related Work (Reference Papers): **！！大家选择一两篇下面论文看一看，下次分享论文提出的方法，主要是学习方法，基本上不实现，不用太花时间！！**
 * 1. Reading Wikipedia to Answer Open-Domain Questions （较难）
