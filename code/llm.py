@@ -98,12 +98,12 @@ class QwenChatClient:
         pbar.close()
         return results
     
-    def batch_request_with_progress_sync(self, query_context_list=None, query_context_source=None, concurrency=5, **kwargs):
+    def batch_request_sync_simple(self, query_context_list=None, query_context_source=None, concurrency=5, **kwargs):
         if query_context_list is not None:
-            return asyncio.run(self.async_batch_request_with_progress(query_context_list, concurrency, **kwargs))
+            return asyncio.run(self.async_batch_request(query_context_list, concurrency, **kwargs))
         if query_context_source is not None:
             query_context_list = self.load_data(query_context_source)
-            return asyncio.run(self.async_batch_request_with_progress(query_context_list, concurrency, **kwargs))
+            return asyncio.run(self.async_batch_request(query_context_list, concurrency, **kwargs))
         raise ValueError("query_context_list or query_context_source should be provided.")
 
     
@@ -121,10 +121,10 @@ class QwenChatClient:
             )
             # answer the query based on context
             user_prompt = (
-            f"Context:\n{context}\n\n"
-            "Please carefully review the context above and provide a concise, "
-            f"reliable response to the following query:\n{query}\n"
-            "and enclose your final answer within double curly braces, like {{answer}}."
+                'Instructions: Please provide a concise and reliable answer with several keywords only to the query based on the given context. '
+                'Ensure your response is directly supported by the context. Enclose your final answer within {{ }}.\n\n'
+                f'Context:\n{context}\n\n'
+                f'Query:\n{query}'
             )
         elif type == "CoT":
             system_prompt = (
@@ -133,11 +133,10 @@ class QwenChatClient:
             )
             # answer the query based on context
             user_prompt = (
-            f"Context:\n{context}\n\n"
-            "Please carefully review the context above"
-            " and thinking carefully about the question, and provide a concise, "
-            f"reliable response to the following query:\n{query}\n"
-            "and enclose your final answer within double curly braces, like {{answer}}."
+                'Instructions: Please provide a concise and reliable answer with several keywords only to the query based on the given context. '
+                'Ensure your response is directly supported by the context. Enclose your final answer within {{ }}.\n\n'
+                f'Context:\n{context}\n\n'
+                f'Query:\n{query}'
             )
         messages = [
             {
@@ -185,8 +184,10 @@ if __name__ == "__main__":
     context = "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."
 
     # # synchronous request
+    # # we do not recommend using synchronous request function
     # response = client.request(query, context, model="Qwen/Qwen2.5-7B-Instruct")
     # print(response)
+    
     
     # # ==========Asynchronous example==========
     # async def main(query_context_list):
@@ -202,10 +203,17 @@ if __name__ == "__main__":
     # # test prompt method
     # print(client.prompt(query, context, type="normal"))
     
-    # ==========Batch request with progress(simple)==========
-    query_context_list = [(query, context) for _ in range(2)]
-    results = client.batch_request_with_progress_sync(query_context_list=query_context_list, concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", n = 3)
+    # ==========Batch request without progress(simple)==========
+    query_context_list = [("What is the best Chinese large model?", 
+                           "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."),
+                          ("What is the best Chinese large model?",
+                            "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is deepseek."),
+                            ("What is the best Chinese large model?",
+                             "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is hunyuan."),
+                          ]
+    results = client.batch_request_sync_simple(query_context_list=query_context_list, concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", n = 3)
     extracted_answers = client.extract_answer(results)
+    # print("batch results:", results)
     print("extracted answers:", extracted_answers)
     # ==========Batch request with progress(simple)==========
     
