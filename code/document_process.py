@@ -185,7 +185,9 @@ class DocumentPipeline:
         print("Processing documents...")
         self.process_documents()
         self.save_processed_data()
-        self.build_models()
+        self.build_models() # 训练好的模型，我要怎么调用这个模型，进行hybrid search呢？
+        # 还需要提供一个接口，我们可以输入query,返回document id, score, rank之类
+        # 另外，需要在val data跑一遍tf-idf和bm25的模型，返回结果，按照老师给的格式，保存到文件中
 
 
 if __name__ == "__main__":
