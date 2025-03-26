@@ -102,7 +102,7 @@ class DocumentIndexer:
         tokenized_corpus = [DocumentProcessor.tokenize(doc) for doc in self.corpus]
         self.bm25 = BM25Okapi(tokenized_corpus)
         return self.bm25
-    
+
     def save_models(self, output_prefix):
         """保存模型到文件"""
         if self.tfidf_vectorizer:
@@ -111,6 +111,16 @@ class DocumentIndexer:
         if self.bm25:
             with open(f'{output_prefix}_bm25.pkl', 'wb') as f:
                 pickle.dump(self.bm25, f)
+                
+    ### 增加load model      
+     def load_models(self, tfidf_path, bm25_path):
+        """从文件加载模型"""
+        with open(tfidf_path, 'rb') as f:
+            self.tfidf_vectorizer = pickle.load(f)
+        with open(bm25_path, 'rb') as f:
+            self.bm25 = pickle.load(f)
+        print("Models loaded from files successfully")
+
 
 
 class DocumentPipeline:
@@ -179,16 +189,58 @@ class DocumentPipeline:
         markdown_indexer.save_models(f"{self.output_dir}markdown")
         
         print("Models built and saved successfully")
+        
+    ### 增加加载模型
+    def load_models(self):
+        """加载模型"""
+        self.plain_indexer = DocumentIndexer([])
+        self.markdown_indexer = DocumentIndexer([])
+        
+        self.plain_indexer.load_models(f'{self.output_dir}plain_tfidf.pkl', f'{self.output_dir}plain_bm25.pkl')
+        self.markdown_indexer.load_models(f'{self.output_dir}markdown_tfidf.pkl', f'{self.output_dir}markdown_bm25.pkl')
+        
+        print("Models loaded successfully")
+    
+    def hybrid_search(self, query, top_n=10):
+        """进行混合搜索"""
+        # TF-IDF search
+        tfidf_vec_plain = self.plain_indexer.tfidf_vectorizer.transform([query])
+        tfidf_scores_plain = self.plain_indexer.tfidf_matrix.dot(tfidf_vec_plain.T).toarray().flatten()
+        
+        tfidf_vec_markdown = self.markdown_indexer.tfidf_vectorizer.transform([query])
+        tfidf_scores_markdown = self.markdown_indexer.tfidf_matrix.dot(tfidf_vec_markdown.T).toarray().flatten()
+        
+        # BM25 search
+        bm25_scores_plain = self.plain_indexer.bm25.get_scores(DocumentProcessor.tokenize(query))
+        bm25_scores_markdown = self.markdown_indexer.bm25.get_scores(DocumentProcessor.tokenize(query))
+        
+        # Combine scores
+        combined_scores_plain = tfidf_scores_plain + bm25_scores_plain
+        combined_scores_markdown = tfidf_scores_markdown + bm25_scores_markdown
+        
+        # Get top_n results
+        top_plain_idx = combined_scores_plain.argsort()[-top_n:][::-1]
+        top_markdown_idx = combined_scores_markdown.argsort()[-top_n:][::-1]
+        
+        results_plain = [(self.processed_plain[i]['doc_id'], combined_scores_plain[i]) for i in top_plain_idx]
+        results_markdown = [(self.processed_markdown[i]['doc_id'], combined_scores_markdown[i]) for i in top_markdown_idx]
+        
+        return results_plain, results_markdown
     
     def run(self):
         """运行整个处理流程"""
         print("Processing documents...")
         self.process_documents()
         self.save_processed_data()
-        self.build_models() # 训练好的模型，我要怎么调用这个模型，进行hybrid search呢？
+        self.build_models() 
+        self.load_models()# 训练好的模型，我要怎么调用这个模型，进行hybrid search呢？
         # 还需要提供一个接口，我们可以输入query,返回document id, score, rank之类
         # 另外，需要在val data跑一遍tf-idf和bm25的模型，返回结果，按照老师给的格式，保存到文件中
-
+        # hybrid search query
+        query = "example search query"
+        results_plain, results_markdown = self.hybrid_search(query)
+        print("Plain Text Results:", results_plain)
+        print("Markdown Results:", results_markdown)
 
 if __name__ == "__main__":
     # 配置参数
