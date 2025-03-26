@@ -201,7 +201,7 @@ class DocumentPipeline:
         
         print("Models loaded successfully")
     
-    def hybrid_search(self, query, top_n=10):
+    def hybrid_search(self, query, top_n=5):
         """进行混合搜索"""
         # TF-IDF search
         tfidf_vec_plain = self.plain_indexer.tfidf_vectorizer.transform([query])
