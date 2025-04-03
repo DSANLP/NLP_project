@@ -1,0 +1,47 @@
+# config/config.yaml
+system:
+  env: "dev"  # dev/test/prod
+  log_level: "INFO"  # DEBUG/INFO/WARNING/ERROR
+  device: "cuda"  # cuda/cpu
+  seed: 42
+
+paths:
+  data_root: "./data/data"
+  model_root: "./models/"
+  cache_dir: "./cache/"
+  log_dir: "./logs/"
+
+modules:
+  active:  
+    retrieval: "hybrid"  # bm25/bert_base/hybrid to choose the retrieval method
+    generator: "qwen"
+    evaluator: "eval.metrics_calculation"
+    ui: "webui"
+
+retrieval:
+  bm25:
+    k1: 1.2
+    b: 0.75
+  bert_base:
+    model: "bert-base-uncased"
+  hybrid:
+    weights: 
+      bm25: 0.4
+      dpr: 0.6
+    fusion_method: "weighted_sum"  # reciprocal_rank/round_robin
+
+generation:
+  qwen:
+    model_path: "Qwen/Qwen2.5-7B-Instruct"
+    api_mode: true  # true to use the api mode / false to use the local mode
+    system_prompt: |
+      Answer the question based on the context below. 
+      Keep the answer concise and factual.
+
+webui:
+  port: 8080
+  presentation: true # true to open webui / false only for debug
+
+debug:
+  train_mode: false # Set true to enable training mode for bert_base, train the bert_base model for retrieval (the webui will not be open)
+  evaluate_mode: false # Set true to enable evaluation mode, only for evaluation (calculate the metrics_calculation.py)
