@@ -1,6 +1,6 @@
 # Document Retrieval System (BM25 + TF-IDF Hybrid)
 
-## 📁 项目结构
+## 结构
 
 - `document_process.py`: 文档预处理脚本
   - 功能：读取原始document.josnl，提取纯文本并构建 BM25 与 TF-IDF 模型。
