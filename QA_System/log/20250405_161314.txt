@@ -1,0 +1,6 @@
+=== 日志开始于 2025-04-05 16:13:14 ===
+[2025-04-05 16:13:14] [INFO] 日志级别设置为: INFO
+[2025-04-05 16:13:14] [INFO] 配置文件路径: config.yaml
+[2025-04-05 16:13:14] [INFO] 运行模式: process_mode=False, evaluate_mode=False, train_mode=False
+[2025-04-05 16:13:14] [INFO] 启动Web UI模式...
+[2025-04-05 16:13:18] [INFO] 成功导入ManualQuerySearch...

@@ -1,9 +1,14 @@
 # config/config.yaml
 system:
-  env: "dev"  # dev/test/prod
   log_level: "INFO"  # DEBUG/INFO/WARNING/ERROR
   device: "cuda"  # cuda/cpu
   seed: 42
+
+data:
+  input_file: "./data/original_data/"
+  model_output_dir: "./model/pkl/"
+  data_output_dir: "./data/processed_data/" # save the processed data, which used for training and generating
+  val_path: "./data/original_data/val.jsonl" # validation data path
 
 paths:
   data_root: "./data/data"
@@ -17,19 +22,49 @@ modules:
     generator: "qwen"
     evaluator: "eval.metrics_calculation"
     ui: "webui"
+    process: "process.process"
 
+# 检索模型配置（用于WebUI和所有检索服务）
 retrieval:
-  bm25:
-    k1: 1.2
-    b: 0.75
-  bert_base:
-    model: "bert-base-uncased"
+  # 检索公共选项
+  top_k: 5  # 默认返回的文档数量
+  use_plain_text: true  # 是否使用纯文本而非markdown
+  max_words: 10  # 提取答案的最大单词数
+  
+  # 文本检索模型配置
+  text_retrieval:
+    method: "hybrid"  # bm25/tfidf/hybrid
+    hybrid_alpha: 0.7  # hybrid模式下BM25的权重 (0.3tfidf+0.7bm25)
+    
+  # 深度嵌入检索模型配置
+  deep_retrieval:
+    model: "bert-base-uncased"  # 使用的预训练模型（更改为英文模型）
+    pooling: "mean"  # 句子嵌入池化方法: mean/max/cls
+    # DPR训练相关配置
+    train_batch_size: 8
+    epochs: 3
+    learning_rate: 2e-5
+    warmup_steps: 100
+    weight_decay: 0.01
+    max_grad_norm: 1.0
+    num_negatives: 7
+    max_length: 512
+    index_batch_size: 8
+    index_type: "Flat"  # Flat/IVF/HNSW
+    # 交叉验证配置
+    cross_validation:
+      enabled: true  # 是否启用交叉验证
+      n_folds: 5  # 交叉验证折数
+      metrics: ["precision", "recall", "mrr", "hit_rate@k"]  # 评估指标
+    
+  # 混合检索模型配置
   hybrid:
     weights: 
       bm25: 0.4
       dpr: 0.6
     fusion_method: "weighted_sum"  # reciprocal_rank/round_robin
 
+# 文本生成配置
 generation:
   qwen:
     model_path: "Qwen/Qwen2.5-7B-Instruct"
@@ -38,10 +73,29 @@ generation:
       Answer the question based on the context below. 
       Keep the answer concise and factual.
 
+# WebUI配置
 webui:
   port: 8080
-  presentation: true # true to open webui / false only for debug
+  presentation: true  # true to open webui / false only for debug
 
+# 评估配置
+evaluation:
+  # 评估模式的通用配置
+  default_method: "text"  # 默认评估方法: text/deep_embedding/hybrid
+  auto_select: false  # 是否自动选择默认方法(true)，还是提示用户选择(false)
+  
+  # 评估指标配置
+  metrics:
+    calculate: true  # 是否计算评估指标
+    types: ["precision", "recall", "mrr"]  # 要计算的指标类型
+  # 评估输出路径配置
+  output:
+    text: "./data/evaluation/text_evaluation_results.jsonl"
+    deep_embedding: "./data/evaluation/deep_embedding_evaluation_results.jsonl"
+    hybrid: "./data/evaluation/hybrid_evaluation_results.jsonl"
+
+# 调试模式配置
 debug:
-  train_mode: false # Set true to enable training mode for bert_base, train the bert_base model for retrieval (the webui will not be open)
-  evaluate_mode: false # Set true to enable evaluation mode, only for evaluation (calculate the metrics_calculation.py)
+  train_mode: false  # 启用训练模式 (训练bert_base模型)
+  evaluate_mode: true  # 启用评估模式 (执行评估流程)
+  process_mode: false # 启用处理模式 (执行数据处理流程)
