@@ -96,13 +96,12 @@ class ReRanker:
             scores.append(s)
             indices.append(i)
         return scores, indices
-    
 
 if __name__ == "__main__":
     # Example usage
     api_token = "<api token>"
     api_token = open("../silicon_api.key").read().strip()
-    reranker = ReRanker(api_token)
+    
     
     # =============== Example: async and extract ===============
     query_document_list = [
@@ -112,6 +111,7 @@ if __name__ == "__main__":
     ]
     # use_progress_bar=True cannot keep the same order
     # use_progress_bar=False can keep the same order
+    reranker = ReRanker(api_token)
     responses = asyncio.run(reranker.async_send_requests(
         query_document_list, use_progress_bar=False, concurrency=5))    
     scores, indices = reranker.extract_json(responses)

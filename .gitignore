@@ -1,6 +1,7 @@
 # zqy add
 data_and_code/
 silicon_api.key
+draft.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

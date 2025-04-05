@@ -99,6 +99,8 @@ class QwenChatClient:
         return results
     
     def batch_request_sync_simple(self, query_context_list=None, query_context_source=None, concurrency=5, **kwargs):
+        """
+        """
         if query_context_list is not None:
             return asyncio.run(self.async_batch_request(query_context_list, concurrency, **kwargs))
         if query_context_source is not None:
@@ -154,7 +156,7 @@ class QwenChatClient:
         """
         extract answers from responses
         responses have attribute choices, each choice have index, content
-        extracted_answers: [[answer1, answer2], [answer1, answer2]]
+        extracted_answers: [[answer1, answer2], [answer1, answer2]]  # n=2
         """
         extracted_answers = []
         for response in tqdm(responses):
@@ -178,7 +180,7 @@ class QwenChatClient:
 if __name__ == "__main__":
     api_token = "sk-****" # get api_key from https://cloud.siliconflow.cn/models
     api_token = open("../silicon_api.key").read().strip()
-    client = QwenChatClient(api_token=api_token)
+    
 
     query = "What is the best Chinese large model?"
     context = "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."
@@ -204,6 +206,7 @@ if __name__ == "__main__":
     # print(client.prompt(query, context, type="normal"))
     
     # ==========Batch request without progress(simple)==========
+    client = QwenChatClient(api_token=api_token)
     query_context_list = [("What is the best Chinese large model?", 
                            "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."),
                           ("What is the best Chinese large model?",
@@ -211,7 +214,10 @@ if __name__ == "__main__":
                             ("What is the best Chinese large model?",
                              "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is hunyuan."),
                           ]
-    results = client.batch_request_sync_simple(query_context_list=query_context_list, concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", n = 3)
+    results = client.batch_request_sync_simple(
+        query_context_list=query_context_list, 
+        concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", 
+        n = 3)
     extracted_answers = client.extract_answer(results)
     # print("batch results:", results)
     print("extracted answers:", extracted_answers)
