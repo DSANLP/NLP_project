@@ -98,15 +98,15 @@ class QwenChatClient:
         pbar.close()
         return results
     
-    def batch_request_sync_simple(self, query_context_list=None, query_context_source=None, concurrency=5, **kwargs):
+    def batch_request_async_simple(self, query_context_list=None, query_context_path=None, concurrency=5, **kwargs):
         """
         """
         if query_context_list is not None:
             return asyncio.run(self.async_batch_request(query_context_list, concurrency, **kwargs))
-        if query_context_source is not None:
-            query_context_list = self.load_data(query_context_source)
+        if query_context_path is not None:
+            query_context_list = self.load_data(query_context_path)
             return asyncio.run(self.async_batch_request(query_context_list, concurrency, **kwargs))
-        raise ValueError("query_context_list or query_context_source should be provided.")
+        raise ValueError("query_context_list or query_context_path should be provided.")
 
     
     def prompt(self, query, context, type="instruct"):
@@ -179,8 +179,14 @@ class QwenChatClient:
 
 if __name__ == "__main__":
     api_token = "sk-****" # get api_key from https://cloud.siliconflow.cn/models
-    api_token = open("../silicon_api.key").read().strip()
-    
+    api_token = (
+        open(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "silicon_api.key"),
+            "r",
+        )
+        .read()
+        .strip()
+    )
 
     query = "What is the best Chinese large model?"
     context = "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."
@@ -189,8 +195,7 @@ if __name__ == "__main__":
     # # we do not recommend using synchronous request function
     # response = client.request(query, context, model="Qwen/Qwen2.5-7B-Instruct")
     # print(response)
-    
-    
+
     # # ==========Asynchronous example==========
     # async def main(query_context_list):
     #     # Batch async request with a max concurrency
@@ -201,10 +206,10 @@ if __name__ == "__main__":
     # query_context_list = [(query, context) for _ in range(2)]
     # asyncio.run(main(query_context_list))
     # # ==========Asynchronous example==========
-    
+
     # # test prompt method
     # print(client.prompt(query, context, type="normal"))
-    
+
     # ==========Batch request without progress(simple)==========
     client = QwenChatClient(api_token=api_token)
     query_context_list = [("What is the best Chinese large model?", 
@@ -214,7 +219,7 @@ if __name__ == "__main__":
                             ("What is the best Chinese large model?",
                              "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is hunyuan."),
                           ]
-    results = client.batch_request_sync_simple(
+    results = client.batch_request_async_simple(
         query_context_list=query_context_list, 
         concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", 
         n = 3)
@@ -222,4 +227,3 @@ if __name__ == "__main__":
     # print("batch results:", results)
     print("extracted answers:", extracted_answers)
     # ==========Batch request with progress(simple)==========
-    

@@ -2,6 +2,7 @@ import requests
 import asyncio
 import aiohttp
 from tqdm.asyncio import tqdm
+import os
 
 
 class ReRanker:
@@ -77,6 +78,14 @@ class ReRanker:
                 responses = await asyncio.gather(*tasks)
         return responses
     
+    def async_send_requests_simple(self, query_document_list, use_progress_bar=False, concurrency=5, **kwargs):
+        # This function is a simple wrapper around async_send_requests
+        return asyncio.run(
+            self.async_send_requests(
+                query_document_list, use_progress_bar=use_progress_bar, concurrency=concurrency, **kwargs
+            )
+        )
+        
     def extract_json(self, responses):
         """
         return a list of scores and indices
@@ -100,7 +109,14 @@ class ReRanker:
 if __name__ == "__main__":
     # Example usage
     api_token = "<api token>"
-    api_token = open("../silicon_api.key").read().strip()
+    api_token = (
+        open(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "silicon_api.key"),
+            "r",
+        )
+        .read()
+        .strip()
+    )
     
     
     # =============== Example: async and extract ===============
@@ -112,8 +128,11 @@ if __name__ == "__main__":
     # use_progress_bar=True cannot keep the same order
     # use_progress_bar=False can keep the same order
     reranker = ReRanker(api_token)
-    responses = asyncio.run(reranker.async_send_requests(
-        query_document_list, use_progress_bar=False, concurrency=5))    
+    # responses = asyncio.run(reranker.async_send_requests(
+    #     query_document_list, use_progress_bar=False, concurrency=5))    
+    responses = reranker.async_send_requests_simple(
+        query_document_list, use_progress_bar=False, concurrency=5
+    )
     scores, indices = reranker.extract_json(responses)
     print(scores)
     print(indices)

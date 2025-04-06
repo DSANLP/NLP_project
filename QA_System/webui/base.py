@@ -1,5 +1,7 @@
 import gradio as gr
 import yaml
+from backbone.llm import QwenChatClient
+from backbone.rerank import ReRanker
 
 class WebUI:
     def __init__(self, config_path="config.yaml"):
@@ -122,7 +124,21 @@ class WebUI:
         pass
         return {"answer": "答案", "document_id": [1, 2]}
 
-    def rerank_results(self, query, retrieval_results):
+    def get_api_key(self) -> str:
+        """
+        获取API密钥, silicon flower的API密钥
+        """
+        raise NotImplementedError("请在config.yaml中配置API密钥")
+    
+    def retrieve_doc(self, idx_list: list[int]) -> list[str]:
+        """
+        根据索引值找到对应的文档
+        input: idx_list: list[int], 文档索引列表,即document_ID
+        return: list[str], 对应的文档内容list
+        """
+        raise NotImplementedError("请完成=根据索引值找到对应的文档=retrieve_doc方法")
+        
+    def rerank_results(self, query, document_id_list, top_n=1):
         """
         重排序模块接口【可定制】
         
@@ -142,34 +158,39 @@ class WebUI:
         - 用户不直接与此接口交互，但结果影响最终显示在WebUI中的文档顺序
         - 重排序后的结果直接影响生成的答案质量和相关文档展示顺序
         """
-        pass
-        return retrieval_results
+        api_token = self.get_api_key()
+        document_content_list = self.retrieve_doc(document_id_list)
+        query_document_list = [
+            [query, document_content_list]
+        ]
+        reranker = ReRanker(api_token) 
+        responses = reranker.async_send_requests_simple(
+            query_document_list, use_progress_bar=False, concurrency=1
+        )
+        _, indices = reranker.extract_json(responses) # return: scores, indices
+        return indices[0][:top_n] # 取前n个文档的索引值
 
-    def generate_answer(self, query, context):
+    def generate_answer(self, query:str, context:str, n=5)->str:
         """
-        生成模块接口【可定制】
-        
-        功能：
-        - 基于检索结果生成答案
-        - 使用语言模型（如Qwen）根据相关文档合成回答用户问题的文本
-        
-        参数：
-        - query: 用户输入的查询字符串 str
-        - context: 输入的文档文本 str
-        
-        返回值：
-        - 生成的答案文本 str
-        
-        与用户界面联动：
-        - 在process_query方法中被调用
-        - 生成的答案直接显示在WebUI的回答区域
-        
-        配置相关：
-        - 使用config.yaml中generation部分的配置
-        - 根据system_prompt设置的提示词来引导模型生成格式合适的回答
+        使用QwenChatClient生成答案
+        输入参数：
+        - query: 用户输入的查询字符串
+        - context: 检索到的相关文档
+        - n: 生成答案的数量
+        return:
+        answer: 生成的答案文本
         """
-        pass
-        return "str: 答案"
+        api_token = self.get_api_key()
+        client = QwenChatClient(api_token=api_token)
+        query_context_list = [(query, context)]
+        results = client.batch_request_sync_simple(
+            query_context_list=query_context_list, 
+            concurrency=1, model="Qwen/Qwen2.5-7B-Instruct", 
+            n = n)
+        extracted_answers_list = client.extract_answer(results)[0]
+        # return the most frequent answer
+        answer = max(set(extracted_answers_list), key=extracted_answers_list.count)
+        return answer
 
     def process_query(self, query, retrieval_method):
         """
