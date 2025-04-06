@@ -138,25 +138,14 @@ class WebUI:
         """
         raise NotImplementedError("请完成=根据索引值找到对应的文档=retrieve_doc方法")
         
-    def rerank_results(self, query, document_id_list, top_n=1):
+    def rerank_results(self, query:str, document_id_list:list[int], top_n:int=1):
         """
-        重排序模块接口【可定制】
-        
-        功能：
-        - 对检索结果进行再排序，提高相关度排序质量
-        - 可应用更复杂的模型或规则，比初始检索更精确地判断相关性
-        
-        参数：
-        - query: 用户输入的查询字符串 str
-        - retrieval_results: 初始检索返回的文档列表 document_id: list[int]
-        
-        返回值：
-        - 重排序后的文档列表
-        
-        与用户界面联动：
-        - 在process_query方法中被调用，是处理流程的一部分
-        - 用户不直接与此接口交互，但结果影响最终显示在WebUI中的文档顺序
-        - 重排序后的结果直接影响生成的答案质量和相关文档展示顺序
+        重排documnet_id_list的顺序,根据相关性
+        input:
+        - query: 用户输入的查询字符串
+        - document_id_list: list[int], 文档索引列表,即document_ID
+        - top_n: int, 需要返回的document_id数量
+        return: top_n个文档的索引值list
         """
         api_token = self.get_api_key()
         document_content_list = self.retrieve_doc(document_id_list)
