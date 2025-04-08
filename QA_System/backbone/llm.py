@@ -42,6 +42,7 @@ class QwenChatClient:
         response = requests.post(self.base_url, json=payload, headers=self.headers)
         if response.status_code != 200:
             raise Exception(f"Failed to request QwenChat API: {response.text}")
+            return None # !!!!!!!!!!!!!!
         return response.json()
     
     def batch_requests(self, query_context_list, **kwargs):
@@ -72,7 +73,9 @@ class QwenChatClient:
             async with session.post(self.base_url, json=payload, headers=self.headers) as response:
                 if response.status != 200:
                     text = await response.text()
-                    raise Exception(f"Failed to request QwenChat API: {text}")
+                    print(f"Failed to request QwenChat API: {text}")
+                    print("we will return answer as \"None\"")
+                    return None
                 return await response.json()
 
     async def async_batch_request(self, query_context_list, concurrency=5, **kwargs):
@@ -159,7 +162,11 @@ class QwenChatClient:
         extracted_answers: [[answer1, answer2], [answer1, answer2]]  # n=2
         """
         extracted_answers = []
+        print("Extracting answers...")
         for response in tqdm(responses):
+            if response is None:
+                extracted_answers.append(["None"]) # if the response is None, append "None"
+                continue
             choices = response.get("choices", [])
             answers = []
             for choice in choices:

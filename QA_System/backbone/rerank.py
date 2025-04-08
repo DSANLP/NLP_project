@@ -18,7 +18,7 @@ class ReRanker:
         query,
         documents,
         return_documents=False,
-        max_chunks_per_doc=1024,
+        max_chunks_per_doc=6000,
         overlap_tokens=100,
         model="BAAI/bge-reranker-v2-m3",
         top_n=5,
@@ -58,6 +58,8 @@ class ReRanker:
             "top_n": top_n,
         }
         async with session.post(self.url, json=payload, headers=self.headers) as response:
+            if response.status != 200:
+                raise Exception(f"Request failed with status code {response.text}")
             return await response.json()
 
     async def async_send_requests(self, query_document_list, use_progress_bar=False, concurrency=5, **kwargs):
@@ -121,7 +123,7 @@ if __name__ == "__main__":
     
     # =============== Example: async and extract ===============
     query_document_list = [
-        ["Apple", ["kobe", "apple", "fruit", "vegetable", "banana", "orange"]],
+        ["apple", ["kobe "*20000, "apple and juice"*20000, "fruit", "vegetable", "banana", "orange"]],
         ["Banana", ["kobe", "apple", "fruit", "vegetable", "banana", "orange"]],
         ["Orange", ["kobe", "apple", "fruit", "vegetable", "banana", "orange"]],
     ]
@@ -131,7 +133,7 @@ if __name__ == "__main__":
     # responses = asyncio.run(reranker.async_send_requests(
     #     query_document_list, use_progress_bar=False, concurrency=5))    
     responses = reranker.async_send_requests_simple(
-        query_document_list, use_progress_bar=False, concurrency=5
+        query_document_list, use_progress_bar=False, concurrency=5, top_n = 5
     )
     scores, indices = reranker.extract_json(responses)
     print(scores)
