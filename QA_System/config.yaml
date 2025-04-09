@@ -9,6 +9,7 @@ data:
   model_output_dir: "./model/pkl/"
   data_output_dir: "./data/processed_data/" # save the processed data, which used for training and generating
   val_path: "./data/original_data/val.jsonl" # validation data path
+  test_path: "./data/original_data/test.jsonl" # test data path
 
 paths:
   data_root: "./data/data"
@@ -38,24 +39,22 @@ retrieval:
     
   # 深度嵌入检索模型配置
   deep_retrieval:
-    model: "bert-base-uncased"  # 使用的预训练模型（更改为英文模型）
-    pooling: "mean"  # 句子嵌入池化方法: mean/max/cls
-    # DPR训练相关配置
-    train_batch_size: 8
-    epochs: 3
-    learning_rate: 2e-5
-    warmup_steps: 100
-    weight_decay: 0.01
-    max_grad_norm: 1.0
-    num_negatives: 7
-    max_length: 512
-    index_batch_size: 8
-    index_type: "Flat"  # Flat/IVF/HNSW
-    # 交叉验证配置
-    cross_validation:
-      enabled: true  # 是否启用交叉验证
-      n_folds: 5  # 交叉验证折数
-      metrics: ["precision", "recall", "mrr", "hit_rate@k"]  # 评估指标
+    # BGE-M3配置
+    bgem3:
+      model: "BAAI/bge-m3"
+      api_key: "sk-???"
+      doc_path: "./data/processed_data/processed_plain.jsonl"
+      intermediate_path: "./cache/bge_m3_intermediate"
+      chunk_size: 10  # 每批处理的文档数量
+      overlap_ratio: 0.2  # 文本分割重叠率(0-0.5)
+      use_weighted_avg: true  # 使用加权平均而非简单平均
+      auto_load: true  # 自动加载中间结果
+    # 本地BERT配置
+    local_embedding:
+      model: bert_base_uncased
+    # 训练配置
+    train:
+      model: bert_base_uncased
     
   # 混合检索模型配置
   hybrid:
@@ -64,14 +63,37 @@ retrieval:
       dpr: 0.6
     fusion_method: "weighted_sum"  # reciprocal_rank/round_robin
 
+  # FAISS配置
+  faiss:
+    index_name: "bgem3"  # FAISS索引名称
+    index_path: "./faiss/"  # FAISS索引存储路径
+
+# BERT-Base训练配置
+bert_base:
+  train:
+    model_name_or_path: "nomic-ai/nomic-bert-2048"  # 支持长序列的预训练模型
+    shared_weights: false  # 是否共享查询和文档编码器的权重
+    temperature: 0.05  # 相似度计算的温度系数
+    num_train_epochs: 5  # 训练轮数
+    batch_size: 2  # 训练批次大小s
+    learning_rate: 3.0e-5  # 学习率
+    weight_decay: 0.01  # 权重衰减
+    max_query_length: 128  # 查询文本的最大长度
+    max_ctx_length: 2048  # 上下文文本的最大长度（利用长序列能力）
+    warmup_steps: 0  # 学习率预热步数
+    adam_epsilon: 1.0e-8  # Adam优化器的epsilon值
+    eval_steps: 0  # 每多少步评估一次,0为不评估
+    gradient_accumulation_steps: 2  # 梯度累积步数
+    num_workers: 4  # 数据加载器的工作进程数
+
 # 文本生成配置
 generation:
   qwen:
-    model_path: "Qwen/Qwen2.5-7B-Instruct"
-    api_mode: true  # true to use the api mode / false to use the local mode
-    system_prompt: |
-      Answer the question based on the context below. 
-      Keep the answer concise and factual.
+    api_key: "sk-nfizfypjawwnixaimezwbkxbhomzpuozlungqykzkwyporuk"
+
+rerank:
+  api_key: "sk-nfizfypjawwnixaimezwbkxbhomzpuozlungqykzkwyporuk"
+  url: "https://api.siliconflower.com/v1/rerank"
 
 # WebUI配置
 webui:
@@ -96,6 +118,8 @@ evaluation:
 
 # 调试模式配置
 debug:
-  train_mode: false  # 启用训练模式 (训练bert_base模型)
-  evaluate_mode: true  # 启用评估模式 (执行评估流程)
+  train_mode: false # 启用训练模式 (训练bert_base模型)
+  evaluate_mode: false  # 启用评估模式 (执行评估流程)
   process_mode: false # 启用处理模式 (执行数据处理流程)
+  vectorize_mode: false # 启用向量化模式 (执行文档向量化并创建FAISS索引)
+  rerank_mode: false # 启用重排序模式 (执行重排序流程)

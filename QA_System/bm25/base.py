@@ -302,14 +302,9 @@ class ManualQuerySearch(BaseSearchEngine):
                 # 提取文档ID列表，并确保都是字符串类型
                 doc_id_list = [str(doc_id) for (_, doc_id, _) in results]
                 
-                # 从第一个文档提取答案
-                first_doc_text = results[0][2]
-                answer = self.extract_answer_from_doc(first_doc_text, max_words=self.max_words)
-                
                 debug(f"检索结果: 找到 {len(doc_id_list)} 个相关文档")
                 return {
                     "question": query,
-                    "answer": answer,
                     "document_id": doc_id_list
                 }
             else:
@@ -317,7 +312,6 @@ class ManualQuerySearch(BaseSearchEngine):
                 debug("检索结果: 未找到相关文档")
                 return {
                     "question": query,
-                    "answer": "未找到相关信息",
                     "document_id": []
                 }
                 
@@ -327,7 +321,6 @@ class ManualQuerySearch(BaseSearchEngine):
             traceback.print_exc()
             return {
                 "question": query,
-                "answer": f"搜索过程中出错: {str(e)}",
                 "document_id": []
             }
 

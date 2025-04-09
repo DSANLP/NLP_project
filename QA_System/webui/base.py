@@ -1,5 +1,9 @@
 import gradio as gr
 import yaml
+import os
+from utils import log_message, debug, warning, error
+import sys
+import traceback
 from backbone.llm import QwenChatClient
 from backbone.rerank import ReRanker
 
@@ -21,10 +25,77 @@ class WebUI:
         - 决定是否显示WebUI界面
         - 设置Radio按钮的默认选择值
         """
+        self.config_path = config_path
         self.config = self.load_config(config_path)
         self.port = self.config.get("webui", {}).get("port", 8080)
         self.presentation = self.config.get("webui", {}).get("presentation", True)
         self.retrieval_type = self.config.get("modules", {}).get("active", {}).get("retrieval", "hybrid")
+        
+        # 初始化搜索器
+        self.init_searcher()
+    
+    def init_searcher(self):
+        """初始化BM25搜索器"""
+        # 获取BM25配置
+        bm25_config = self.config.get("retrieval", {}).get("text_retrieval", {})
+        retrieval_method = bm25_config.get("method", "hybrid")
+        
+        # 处理文件路径
+        data_output_dir = self.config.get("data", {}).get("data_output_dir", "./data/processed_data/")
+        model_output_dir = self.config.get("data", {}).get("model_output_dir", "./model/pkl/")
+        
+        # 根据use_plain_text决定使用哪个处理后的文档
+        use_plain_text = bm25_config.get("use_plain_text", True)
+        doc_type = "plain" if use_plain_text else "markdown"
+        doc_path = os.path.join(data_output_dir, f"processed_{doc_type}.jsonl")
+        bm25_path = os.path.join(model_output_dir, f"{doc_type}_bm25.pkl")
+        tfidf_path = os.path.join(model_output_dir, f"{doc_type}_tfidf.pkl")
+        
+        log_message(f"文档路径: {doc_path}")
+        log_message(f"BM25模型路径: {bm25_path}")
+        log_message(f"TF-IDF模型路径: {tfidf_path}")
+        
+        # 检查必要文件是否存在
+        required_files = [doc_path, bm25_path, tfidf_path]
+        missing_files = [f for f in required_files if not os.path.exists(f)]
+        
+        if missing_files:
+            for file in missing_files:
+                log_message(f"错误：文件 {file} 不存在")
+            log_message("请先运行处理模式(process_mode)生成必要的模型和数据文件")
+            import sys
+            sys.exit(1)
+        
+        # 构建查询搜索器配置
+        self.search_config = {
+            "method": retrieval_method,
+            "hybrid_alpha": bm25_config.get("hybrid_alpha", 0.7),
+            "top_k": bm25_config.get("top_k", 5),
+            "max_words": bm25_config.get("max_words", 2),
+            "doc_path": doc_path,
+            "bm25_path": bm25_path,
+            "tfidf_path": tfidf_path
+        }
+        
+        try:
+            # 导入并实例化搜索器
+            from bm25.base import ManualQuerySearch
+            log_message("成功导入ManualQuerySearch...")
+            
+            # 添加更详细的加载日志
+            log_message("开始初始化搜索器...")
+            log_message("正在加载文档，这可能需要一点时间...")
+            log_message("正在加载BM25模型，这可能需要一点时间...")
+            log_message("如果是hybrid模式，还将加载TF-IDF模型...")
+            
+            # 实例化搜索器
+            self.searcher = ManualQuerySearch(self.search_config)
+            log_message(f"成功初始化ManualQuerySearch，当前参数为：{self.search_config}")
+            debug("搜索器初始化完成，开始构建UI...")
+        except Exception as e:
+            error(f"初始化ManualQuerySearch时出错: {str(e)}")
+            traceback.print_exc()
+            sys.exit(1)
     
     def load_config(self, config_path):
         """
@@ -47,9 +118,9 @@ class WebUI:
             config = yaml.safe_load(f)
         return config
     
-    def retrieval_bm25(self, query, context=None):
+    def retrieval_text(self, query):
         """
-        BM25检索模块接口【可定制】
+        文本检索模块接口【可定制】
         
         功能：
         - 使用BM25算法从文档集合中检索与查询相关的文档
@@ -69,12 +140,19 @@ class WebUI:
         配置相关：
         - 使用config.yaml中retrieval.bm25部分的参数配置（k1和b值）
         """
-        pass
-        return {"answer": "答案", "document_id": [1, 2]}
+        if not query or not query.strip():
+            return {
+                "question": "",
+                "document_id": []
+            }
+        
+        # 使用初始化好的搜索器
+        result = self.searcher.search(query)
+        return result
     
-    def retrieval_bert_base(self, query, context=None):
+    def retrieval_dpr(self, query, context=None):
         """
-        bert_base检索模块接口【可定制】
+        dpr检索模块接口【可定制】
         
         功能：
         - 使用BERT模型进行语义检索，找到与查询在语义上相关的文档
@@ -88,14 +166,13 @@ class WebUI:
         - 检索到的相关文档列表
         
         与用户界面联动：
-        - 当用户在Radio按钮中选择"bert_base"并提交问题时，系统调用此方法
+        - 当用户在Radio按钮中选择"dpr"并提交问题时，系统调用此方法
         - 检索结果将被process_query方法处理，最终显示在WebUI的相关文档区域
         
         配置相关：
-        - 使用config.yaml中retrieval.bert_base部分的模型配置
+        - 使用config.yaml中retrieval.dpr部分的模型配置
         """
         pass
-        return {"answer": "答案", "document_id": [1, 2]}
 
     def retrieval_hybrid(self, query, context=None):
         """
@@ -122,22 +199,64 @@ class WebUI:
         - fusion_method决定融合方法（weighted_sum或reciprocal_rank等）
         """
         pass
-        return {"answer": "答案", "document_id": [1, 2]}
 
     def get_api_key(self) -> str:
         """
         获取API密钥, silicon flower的API密钥
         """
-        raise NotImplementedError("请在config.yaml中配置API密钥")
+        api_key = self.config.get("generation", {}).get("qwen", {}).get("api_key", "")
+        if not api_key:
+            raise ValueError("API密钥未配置")
+        return api_key
     
     def retrieve_doc(self, idx_list: list[int]) -> list[str]:
-        """
-        根据索引值找到对应的文档
-        input: idx_list: list[int], 文档索引列表,即document_ID
-        return: list[str], 对应的文档内容list
-        """
-        raise NotImplementedError("请完成=根据索引值找到对应的文档=retrieve_doc方法")
-        
+        """根据索引值找到对应的文档"""
+        try:
+            doc_path = self.search_config.get("doc_path")
+            log_message(f"正在读取文档文件: {doc_path}")
+
+            # 转换为字符串列表进行匹配
+            str_idx_list = [str(idx) for idx in idx_list]
+            
+            import pandas as pd
+            df = pd.read_json(doc_path, lines=True, dtype={'doc_id': str})
+            
+            # 调试输出数据结构
+            debug(f"数据文件包含列: {df.columns.tolist()}")
+            debug(f"前3条数据示例:\n{df.head(3)}")
+            
+            # 检查必要字段是否存在
+            if 'doc_id' not in df.columns or 'text' not in df.columns:
+                raise KeyError("数据文件缺少doc_id或text字段")
+
+            # 批量查询并保留顺序
+            matched_df = df[df['doc_id'].isin(str_idx_list)]
+            debug(f"匹配到{len(matched_df)}条记录，预期ID列表: {str_idx_list}")
+
+            # 按输入顺序排序并去重
+            ordered_docs = []
+            seen = set()
+            for idx in str_idx_list:
+                if idx not in seen:
+                    doc = matched_df[matched_df['doc_id'] == idx]
+                    if not doc.empty:
+                        ordered_docs.append(doc.iloc[0]['text'])
+                        seen.add(idx)
+
+            # 记录匹配结果
+            found_ids = list(seen)
+            if found_ids:
+                log_message(f"成功匹配文档ID: {found_ids}")
+            else:
+                warning("未找到任何匹配文档")
+            print(ordered_docs[0])
+            return ordered_docs
+
+        except Exception as e:
+            error(f"文档检索失败: {str(e)}")
+            traceback.print_exc()
+            return []
+
     def rerank_results(self, query:str, document_id_list:list[int], top_n:int=1):
         """
         重排documnet_id_list的顺序,根据相关性
@@ -172,7 +291,7 @@ class WebUI:
         api_token = self.get_api_key()
         client = QwenChatClient(api_token=api_token)
         query_context_list = [(query, context)]
-        results = client.batch_request_sync_simple(
+        results = client.batch_request_async_simple(
             query_context_list=query_context_list, 
             concurrency=1, model="Qwen/Qwen2.5-7B-Instruct", 
             n = n)
@@ -180,6 +299,21 @@ class WebUI:
         # return the most frequent answer
         answer = max(set(extracted_answers_list), key=extracted_answers_list.count)
         return answer
+
+    def format_document_display(self, document_ids):
+        """格式化文档ID列表为显示文本"""
+        if not document_ids:
+            return "未找到相关文档"
+            
+        # 确保文档ID都是字符串类型
+        str_doc_ids = [str(doc_id) for doc_id in document_ids]
+            
+        # 显示最多前3个文档ID
+        doc_list_text = "，".join(str_doc_ids[:3])
+        if len(document_ids) > 5:
+            doc_list_text += f"等{len(document_ids)}个文档"
+            
+        return f"相关文档: {doc_list_text}"
 
     def process_query(self, query, retrieval_method):
         """
@@ -208,24 +342,71 @@ class WebUI:
         3. 基于重排序后的文档生成答案
         4. 格式化结果用于界面显示
         """
-        # 根据选择的检索方法检索文档
-        if retrieval_method == "bm25":
-            retrieval_results = self.retrieval_bm25(query)
-        elif retrieval_method == "bert_base":
-            retrieval_results = self.retrieval_bert_base(query)
-        else:  # hybrid
-            retrieval_results = self.retrieval_hybrid(query)
+        # 输入检查
+        if not query or not query.strip():
+            return "请输入查询内容", "无相关文档"
+            
+        # 去除首尾空白字符
+        query = query.strip()
         
-        # 重排序
-        reranked_results = self.rerank_results(query, retrieval_results)
+        # 记录查询信息
+        log_message(f"用户提交查询: '{query}', 使用检索方法: {retrieval_method}")
         
-        # 生成答案
-        answer = self.generate_answer(query, reranked_results)
-        
-        # 展示检索结果和生成的答案
-        context_display = "\n\n".join([f"【相关文档 {i+1}】\n{doc}" for i, doc in enumerate(reranked_results)])
-        
-        return answer, context_display
+        try:
+            # 根据选择的检索方法检索文档
+            if retrieval_method == "bm25":
+                retrieval_results = self.retrieval_text(query)
+            elif retrieval_method == "dpr":
+                retrieval_results = self.retrieval_dpr(query)
+            else:  # hybrid
+                retrieval_results = self.retrieval_hybrid(query)
+            
+            # 获取文档ID列表
+            doc_ids = retrieval_results.get("document_id", [])
+            
+            # 如果没有找到相关文档，直接生成答案
+            if not doc_ids:
+                log_message(f"未找到与查询 '{query}' 相关的文档")
+                answer = "Cannot find related documents"
+                return "None", "Null"
+            
+            # 重排序
+            reranked_doc_ids = doc_ids
+            
+            try:
+                # 尝试检索文档内容
+                retrieved_docs = self.retrieve_doc(doc_ids)
+                if retrieved_docs:
+                    answer = self.generate_answer(query, retrieved_docs[0])
+                else:
+                    # 如果retrieve_doc返回空列表，也使用备用回答
+                    log_message(f"虽然找到了文档ID，但无法获取相关文档内容，列表为空")
+                    raise ValueError("Cannot find related content of the query")
+                    sys.exit(1)
+            except Exception as e:
+                # 捕获retrieve_doc可能抛出的异常
+                log_message(f"检索文档时出错: {str(e)}")
+                answer = self.generate_answer(query, f"query: {query}")
+            
+            # 格式化文档ID为显示文本
+            context_display = self.format_document_display(reranked_doc_ids)
+            
+            return answer, context_display
+            
+        except Exception as e:
+            # 捕获整个处理过程中的异常
+            error_msg = f"处理查询时出现错误: {str(e)}"
+            log_message(error_msg)
+            import traceback
+            traceback.print_exc()
+            
+            # 尝试直接生成答案，不依赖检索结果
+            try:
+                answer = self.generate_answer(query, "处理查询时出现错误，将直接回答问题。")
+            except:
+                answer = "很抱歉，处理您的查询时出现了错误，请稍后再试。"
+                
+            return answer, "处理查询时出现错误"
 
     def build_ui(self):
         """
@@ -257,41 +438,85 @@ class WebUI:
         4. 系统调用process_query处理查询
         5. 处理结果显示在回答区和相关文档区
         """
-        with gr.Blocks(title="问答系统") as demo:
-            gr.Markdown("# 智能问答系统")
-            
-            with gr.Row():
-                with gr.Column(scale=3):
-                    # 问题输入框
-                    query_input = gr.Textbox(label="请输入您的问题", placeholder="例如：什么是机器学习？", lines=2)
-                    
-                    # 检索方法选择
-                    retrieval_method = gr.Radio(
-                        choices=["bm25", "bert_base", "hybrid"],
-                        value=self.retrieval_type,
-                        label="检索方法",
-                        info="选择使用的检索方法"
-                    )
-                    
-                    # 提交按钮
-                    submit_button = gr.Button("提交问题", variant="primary")
+        try:
+            debug("开始构建Gradio界面...")
+            with gr.Blocks(title="问答系统") as demo:
+                gr.Markdown("# 智能问答系统")
                 
-                with gr.Column(scale=4):
-                    # 答案显示区域
-                    answer_output = gr.Textbox(label="回答", lines=6)
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        # 问题输入框 - 使用placeholder而非value，避免自动触发查询
+                        query_input = gr.Textbox(
+                            label="请输入您的问题", 
+                            placeholder="例如：什么是机器学习？", 
+                            lines=2,
+                            value=""  # 确保初始值为空
+                        )
+                        
+                        # 检索方法选择
+                        retrieval_method = gr.Radio(
+                            choices=["bm25", "dpr", "hybrid"],
+                            value=self.retrieval_type,
+                            label="检索方法",
+                            info="选择使用的检索方法"
+                        )
+                        
+                        # 提交按钮
+                        submit_button = gr.Button("提交问题", variant="primary")
+                        
+                        # 添加示例问题按钮，而不是自动执行的示例
+                        with gr.Accordion("示例问题", open=False):
+                            sample1_btn = gr.Button("什么是机器学习？")
+                            sample2_btn = gr.Button("深度学习和传统机器学习有什么区别？")
                     
-                    # 相关文档显示区域
-                    context_output = gr.Textbox(label="相关文档", lines=10)
-            
-            # 设置提交按钮功能
-            submit_button.click(
-                fn=self.process_query,
-                inputs=[query_input, retrieval_method],
-                outputs=[answer_output, context_output] # answer_output: 对应 answer, context_output: 对应 context_display
-            )
-        
-        return demo
-    
+                    with gr.Column(scale=4):
+                        # 答案显示区域
+                        answer_output = gr.Textbox(
+                            label="回答", 
+                            lines=6,
+                            value="模型已加载完成，请输入问题并点击提交。"
+                        )
+                        
+                        # 相关文档显示区域
+                        context_output = gr.Textbox(
+                            label="相关文档", 
+                            lines=10,
+                            value="等待输入..."
+                        )
+                
+                # 设置提交按钮功能
+                submit_button.click(
+                    fn=self.process_query,
+                    inputs=[query_input, retrieval_method],
+                    outputs=[answer_output, context_output]
+                )
+                
+                # 示例问题按钮点击事件
+                def set_example_1():
+                    return "什么是机器学习？"
+                
+                def set_example_2():
+                    return "深度学习和传统机器学习有什么区别？"
+                
+                sample1_btn.click(
+                    fn=set_example_1,
+                    inputs=[],
+                    outputs=[query_input]
+                )
+                
+                sample2_btn.click(
+                    fn=set_example_2,
+                    inputs=[],
+                    outputs=[query_input]
+                )
+                
+            debug("Gradio界面构建完成")
+            return demo
+        except Exception as e:
+            error(f"构建UI时出错: {str(e)}")
+            traceback.print_exc()
+            raise
+
     def launch(self):
         """
         启动WebUI服务
@@ -321,12 +546,51 @@ class WebUI:
         - 如果启动成功，用户可在浏览器中访问http://localhost:端口号 查看界面
         """
         if self.presentation:
-            demo = self.build_ui()
-            demo.launch(server_port=self.port)
-            return True
+            try:
+                log_message(f"开始构建WebUI界面...")
+                demo = self.build_ui()
+                log_message(f"WebUI界面构建完成，尝试在端口{self.port}上启动服务...")
+                
+                # 使用更多参数来确保稳定启动，使用多线程方式启动Gradio
+                import threading
+                def start_server():
+                    try:
+                        demo.launch(
+                            server_port=self.port,
+                            share=False,
+                            inbrowser=True,  # 自动打开浏览器
+                            show_error=True,  # 显示详细错误
+                            server_name="0.0.0.0",  # 绑定到所有接口
+                            prevent_thread_lock=True,  # 防止线程锁定
+                            quiet=False  # 不要静默模式
+                        )
+                    except Exception as e:
+                        error(f"Gradio服务器启动失败: {str(e)}")
+                
+                # 启动服务器线程
+                server_thread = threading.Thread(target=start_server)
+                server_thread.daemon = True  # 设置为守护线程
+                server_thread.start()
+                
+                log_message(f"WebUI服务已启动，可以通过 http://localhost:{self.port} 访问")
+                
+                # 等待用户中断
+                try:
+                    while True:
+                        import time
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    log_message("用户中断，关闭WebUI服务...")
+                
+                return True
+            except Exception as e:
+                error(f"启动WebUI服务时出错: {str(e)}")
+                traceback.print_exc()
+                return False
         else:
             print("WebUI未启用。在config.yaml中将webui.presentation设置为true可启用WebUI。")
             return False
+
 
 def create_webui(config_path):
     """
