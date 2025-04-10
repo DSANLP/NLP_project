@@ -56,6 +56,7 @@ class QwenChatClient:
 
     async def async_request(self, query, context, **kwargs):
         messages = self.prompt(query, context, type=kwargs.get("prompt_type", "instruct"))
+        # print("messages:\n", messages, '\n')
         payload = {
             "model": kwargs.get("model", "Qwen/Qwen2.5-7B-Instruct"),
             "stream": kwargs.get("stream", False),
@@ -70,13 +71,21 @@ class QwenChatClient:
             "tools": [],
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(self.base_url, json=payload, headers=self.headers) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    print(f"Failed to request QwenChat API: {text}")
-                    print("we will return answer as \"None\"")
-                    return None
-                return await response.json()
+            # try 3 times
+            for _ in range(3):
+                try:
+                    async with session.post(self.base_url, json=payload, headers=self.headers) as response:
+                        if response.status != 200:
+                            text = await response.text()
+                            print(f"Failed to request QwenChat API: {text}")
+                            print("we will return answer as \"None\"")
+                            return None
+                        return await response.json()
+                except Exception as e:
+                    print(f"Error occurred: {e}")
+                    await asyncio.sleep(1)
+            # if all 3 times failed, return None
+            return None
 
     async def async_batch_request(self, query_context_list, concurrency=5, **kwargs):
         semaphore = asyncio.Semaphore(concurrency)
@@ -126,11 +135,21 @@ class QwenChatClient:
             )
             # answer the query based on context
             user_prompt = (
-                'Instructions: Please provide a concise and reliable answer with several keywords only to the query based on the given context. '
-                'Ensure your response is directly supported by the context. Enclose your final answer within {{ }}.\n\n'
-                f'Context:\n{context}\n\n'
-                f'Query:\n{query}'
+                f'<context>\n{context}\n</context>\n\n'
+                f'<query>\n{query}\n</query>\n\n'
+                'Instructions:\n'
+                '1. query is wrapped in <query></query> tags\n'
+                '2. context is wrapped in <context></context> tags\n'
+                '3. Answer the query based strictly on the content\n'
+                '4. If the answer cannot be found in <context>, return <answer>wrong</answer>\n'
+                '5. Valid answers must:\n'
+                '   - Be wrapped in <answer></answer> tags\n'
+                '   - Contain only key terms/phrases\n'
+                '   - Maintain concise reliability\n'
+                '6. Response format example:\n'
+                '<answer>your answer</answer>'
             )
+
         elif type == "CoT":
             system_prompt = (
             "You are a helpful assistant trained to answer questions using a Chain-of-Thought approach. "
@@ -172,7 +191,7 @@ class QwenChatClient:
             for choice in choices:
                 message = choice.get("message", {})
                 content = message.get("content", "")
-                answer = re.search(r"\{\{(.+?)\}\}", content)
+                answer = re.search(r"<answer>(.*?)</answer>", content)
                 answers.append(answer.group(1) if answer else "")
             extracted_answers.append(answers)
         return extracted_answers
@@ -220,16 +239,16 @@ if __name__ == "__main__":
     # ==========Batch request without progress(simple)==========
     client = QwenChatClient(api_token=api_token)
     query_context_list = [("What is the best Chinese large model?", 
-                           "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen."),
+                           "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is Qwen and QwQ."),
                           ("What is the best Chinese large model?",
-                            "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is deepseek."),
+                            "Trump is the best American president."),
                             ("What is the best Chinese large model?",
                              "The Chinese large model industry is growing rapidly and has attracted a lot of attention. The industry is expected to face both opportunities and challenges in the coming years. The best model is hunyuan."),
                           ]
     results = client.batch_request_async_simple(
         query_context_list=query_context_list, 
         concurrency=5, model="Qwen/Qwen2.5-7B-Instruct", 
-        n = 3)
+        n = 1)
     extracted_answers = client.extract_answer(results)
     # print("batch results:", results)
     print("extracted answers:", extracted_answers)
