@@ -44,7 +44,7 @@ def vectorize_with_bgem3(config):
         
         # 导入必要的模块
         import bgem3
-        import faiss
+        import faiss_composer
         import numpy as np
         import json
         import time
@@ -260,7 +260,7 @@ def vectorize_with_bgem3(config):
                 normalized_vectors = vectors / norms
                 
                 # 使用FaissSaver保存索引
-                faiss_saver = faiss.FaissSaver(all_doc_ids, normalized_vectors.tolist(), index_name, index_path)
+                faiss_saver = faiss_composer.FaissSaver(all_doc_ids, normalized_vectors.tolist(), index_name, index_path)
                 index_path_full = faiss_saver.save()
                 info(f"索引已保存到: {index_path_full}")
                 
@@ -285,7 +285,7 @@ def vectorize_with_bgem3(config):
                             elif choice == "1":
                                 # 使用第一个文档向量进行测试
                                 query_vector = [normalized_vectors[0].tolist()]
-                                faiss_query = faiss.FaissQuery(
+                                faiss_query = faiss_composer.FaissQuery(
                                     query_vector,
                                     index_name,
                                     index_path,
@@ -309,7 +309,7 @@ def vectorize_with_bgem3(config):
                                     query_vectors = vectorizer.vectorize()
                                     
                                     # 执行查询
-                                    faiss_query = faiss.FaissQuery(
+                                    faiss_query = faiss_composer.FaissQuery(
                                         query_vectors,
                                         index_name,
                                         index_path,

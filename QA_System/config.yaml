@@ -43,18 +43,19 @@ retrieval:
     bgem3:
       model: "BAAI/bge-m3"
       api_key: "sk-???"
-      doc_path: "./data/processed_data/processed_plain.jsonl"
-      intermediate_path: "./cache/bge_m3_intermediate"
+      result_path: "./data/result/val_query_vectors.jsonl"
+      faiss_path: "./cache/faiss/bgem3.faiss"
       chunk_size: 10  # 每批处理的文档数量
       overlap_ratio: 0.2  # 文本分割重叠率(0-0.5)
       use_weighted_avg: true  # 使用加权平均而非简单平均
       auto_load: true  # 自动加载中间结果
     # 本地BERT配置
     local_embedding:
-      model: bert_base_uncased
-    # 训练配置
-    train:
-      model: bert_base_uncased
+      model: "nomic-ai/nomic-bert-2048"
+      doc_path: "./data/processed_data/processed_plain.jsonl"
+      chunk_size: 10
+      overlap_ratio: 0.2
+      auto_load: true
     
   # 混合检索模型配置
   hybrid:
@@ -65,7 +66,6 @@ retrieval:
 
   # FAISS配置
   faiss:
-    index_name: "bgem3"  # FAISS索引名称
     index_path: "./faiss/"  # FAISS索引存储路径
 
 # BERT-Base训练配置
@@ -109,7 +109,7 @@ evaluation:
   # 评估指标配置
   metrics:
     calculate: true  # 是否计算评估指标
-    types: ["precision", "recall", "mrr"]  # 要计算的指标类型
+    types: ["recall", "mrr"]  # 要计算的指标类型
   # 评估输出路径配置
   output:
     text: "./data/evaluation/text_evaluation_results.jsonl"

@@ -628,11 +628,11 @@ class doc_vectorizer:
 
 class query_vectorizer:
     '''
-    input: queries List[str]
-    output: vectors List[float]
+    input: query str
+    output: query_vector List[float32]
     '''
-    def __init__(self, queries: List[str], api_key: str, model_name: str):
-        self.queries = queries
+    def __init__(self, query: str, api_key: str, model_name: str):
+        self.query = query
         self.api_key = api_key
         self.model_name = model_name
         self.api_url = "https://api.siliconflow.cn/v1/embeddings"
@@ -640,193 +640,72 @@ class query_vectorizer:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        self.batch_size = 32
         self.max_retries = 3
         self.retry_delay = 1  # 秒
-    
-    def vectorize(self):
+
+    def _make_request(self, text: str) -> List[float]:
         """
-        对查询进行向量化
+        向SILICONFLOW API发送同步请求并获取查询文本的嵌入向量
         
+        参数:
+            text: 查询文本字符串
+            
         返回:
-            vectors: 查询向量列表
+            嵌入向量
         """
-        print(f"开始处理 {len(self.queries)} 个查询...")
-        
-        # 创建批次
-        all_embeddings = []
-        
-        for i in range(0, len(self.queries), self.batch_size):
-            batch_queries = self.queries[i:i+self.batch_size]
-            
-            payload = {
-                "model": self.model_name,
-                "input": batch_queries,
-                "encoding_format": "float"
-            }
-            
-            retry_count = 0
-            while retry_count < self.max_retries:
-                try:
-                    print(f"发送API请求，批次大小: {len(batch_queries)}，第{retry_count+1}次尝试...")
-                    response = requests.post(self.api_url, headers=self.headers, json=payload, timeout=60)
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    # 提取嵌入向量
-                    if len(batch_queries) == 1:
-                        embeddings = [data['data'][0]['embedding']]
-                    else:
-                        # 根据索引排序，确保顺序一致
-                        sorted_data = sorted(data['data'], key=lambda x: x['index'])
-                        embeddings = [item['embedding'] for item in sorted_data]
-                    
-                    all_embeddings.extend(embeddings)
-                    print(f"API请求成功，获取到 {len(embeddings)} 个向量，每个维度 {len(embeddings[0])}")
-                    break
-                    
-                except requests.RequestException as e:
-                    retry_count += 1
-                    if retry_count >= self.max_retries:
-                        print(f"批次 {i} 到 {i+self.batch_size} API请求失败，已重试{retry_count}次: {e}")
-                        if hasattr(e, 'response') and e.response:
-                            print(f"响应内容: {e.response.text}")
-                        raise
-                    else:
-                        wait_time = self.retry_delay * (2 ** (retry_count - 1))  # 指数退避
-                        print(f"批次 {i} 到 {i+self.batch_size} 请求失败，等待 {wait_time} 秒后重试({retry_count}/{self.max_retries})...")
-                        print(f"错误信息: {str(e)}")
-                        time.sleep(wait_time)
-        
-        # 对向量进行L2归一化
-        print("正在进行向量归一化...")
-        vectors = np.array(all_embeddings)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        zero_mask = norms == 0
-        norms[zero_mask] = 1.0  # 避免除以零
-        vectors = vectors / norms
-        
-        print(f"向量化完成！得到 {len(vectors)} 个向量。")
-        return vectors.tolist()
-        
-    async def _async_make_request(self, session, batch_queries, batch_idx):
-        """异步发送请求并获取嵌入向量"""
         payload = {
             "model": self.model_name,
-            "input": batch_queries,
+            "input": text,
             "encoding_format": "float"
         }
         
         retry_count = 0
         while retry_count < self.max_retries:
             try:
-                async with session.post(self.api_url, headers=self.headers, json=payload) as response:
-                    if response.status != 200:
-                        text = await response.text()
-                        raise Exception(f"API返回错误码: {response.status}, 响应内容: {text}")
-                    
-                    data = await response.json()
-                    
-                    # 提取嵌入向量
-                    if len(batch_queries) == 1:
-                        embeddings = [data['data'][0]['embedding']]
-                    else:
-                        # 根据索引排序，确保顺序一致
-                        sorted_data = sorted(data['data'], key=lambda x: x['index'])
-                        embeddings = [item['embedding'] for item in sorted_data]
-                    
-                    return batch_idx, embeddings
-            
-            except Exception as e:
+                print(f"发送查询API请求，第{retry_count+1}次尝试...")
+                response = requests.post(self.api_url, headers=self.headers, json=payload, timeout=60)
+                response.raise_for_status()
+                data = response.json()
+                
+                # 提取嵌入向量
+                embedding = data['data'][0]['embedding']
+                print(f"查询API请求成功，获取到向量，维度: {len(embedding)}")
+                return embedding
+                
+            except requests.RequestException as e:
                 retry_count += 1
                 if retry_count >= self.max_retries:
-                    print(f"批次 {batch_idx} API请求失败，已重试{retry_count}次: {e}")
+                    print(f"查询API请求失败，已重试{retry_count}次: {e}")
+                    if hasattr(e, 'response') and e.response:
+                        print(f"响应内容: {e.response.text}")
                     raise
                 else:
-                    print(f"批次 {batch_idx} 请求失败，正在重试({retry_count}/{self.max_retries})...")
-                    await asyncio.sleep(self.retry_delay)
-                    
-    async def _process_batches_async(self, max_concurrent_requests=5):
-        """并发处理多个批次的查询"""
-        if not self.queries:
-            return []
-        
-        results = [None] * ((len(self.queries) + self.batch_size - 1) // self.batch_size)
-        
-        async with aiohttp.ClientSession() as session:
-            # 创建任务队列
-            tasks = []
-            
-            batch_count = (len(self.queries) + self.batch_size - 1) // self.batch_size
-            with tqdm(total=batch_count, desc="向量化进度") as pbar:
-                for i in range(0, len(self.queries), self.batch_size):
-                    batch_queries = self.queries[i:i+self.batch_size]
-                    batch_idx = i // self.batch_size
-                    
-                    # 控制并发数量
-                    while len(tasks) >= max_concurrent_requests:
-                        # 等待一个任务完成
-                        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                        # 更新任务列表
-                        tasks = list(pending)
-                        for task in done:
-                            try:
-                                idx, embeddings = await task
-                                results[idx] = embeddings
-                                pbar.update(1)
-                            except Exception as e:
-                                print(f"处理批次时出错: {e}")
-                    
-                    # 添加新任务
-                    task = asyncio.create_task(self._async_make_request(session, batch_queries, batch_idx))
-                    tasks.append(task)
-                
-                # 等待所有剩余任务完成
-                while tasks:
-                    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                    # 更新任务列表
-                    tasks = list(pending)
-                    for task in done:
-                        try:
-                            idx, embeddings = await task
-                            results[idx] = embeddings
-                            pbar.update(1)
-                        except Exception as e:
-                            print(f"处理批次时出错: {e}")
-        
-        # 展平结果
-        all_embeddings = []
-        for batch in results:
-            if batch:
-                all_embeddings.extend(batch)
-        
-        return all_embeddings
-    
-    def vectorize_async(self, max_concurrent_requests=5):
+                    wait_time = self.retry_delay * (2 ** (retry_count - 1))  # 指数退避
+                    print(f"查询请求失败，等待 {wait_time} 秒后重试({retry_count}/{self.max_retries})...")
+                    print(f"错误信息: {str(e)}")
+                    time.sleep(wait_time)
+
+    def vectorize(self) -> List[float]:
         """
-        异步方式对查询进行向量化
+        对查询文本进行向量化
         
-        参数:
-            max_concurrent_requests: 最大并发请求数
-            
         返回:
-            vectors: 查询向量列表
+            List[float]: 查询文本的向量表示
         """
-        print(f"开始异步处理 {len(self.queries)} 个查询...")
+        print(f"开始处理查询文本: {self.query[:100]}...")
         
         # 获取嵌入向量
-        vectors = asyncio.run(self._process_batches_async(max_concurrent_requests))
+        vector = self._make_request(self.query)
         
         # 对向量进行L2归一化
         print("正在进行向量归一化...")
-        vectors = np.array(vectors)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        zero_mask = norms == 0
-        norms[zero_mask] = 1.0  # 避免除以零
-        vectors = vectors / norms
+        vector = np.array(vector)
+        norm = np.linalg.norm(vector)
+        if norm > 0:
+            vector = vector / norm
         
-        print(f"向量化完成！得到 {len(vectors)} 个向量。")
-        return vectors.tolist()
+        print("查询向量化完成！")
+        return vector.tolist()
 '''
 if __name__ == "__main__":
     doc_ids = ["1", "2", "3"]

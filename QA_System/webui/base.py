@@ -150,7 +150,7 @@ class WebUI:
         result = self.searcher.search(query)
         return result
     
-    def retrieval_dpr(self, query, context=None):
+    def retrieval_dpr(self, query):
         """
         dpr检索模块接口【可定制】
         
@@ -172,9 +172,12 @@ class WebUI:
         配置相关：
         - 使用config.yaml中retrieval.dpr部分的模型配置
         """
-        pass
+        from dpr.query_process import query2doclist as q2d
+        q2d = q2d(query, self.get_api_key(), "BAAI/bge-m3", "./cache/faiss/bgem3.faiss", 5)
+        doc_id_list = q2d.query2doclist()
+        return doc_id_list
 
-    def retrieval_hybrid(self, query, context=None):
+    def retrieval_hybrid(self, query):
         """
         混合检索模块接口【可定制】
         
@@ -308,12 +311,10 @@ class WebUI:
         # 确保文档ID都是字符串类型
         str_doc_ids = [str(doc_id) for doc_id in document_ids]
             
-        # 显示最多前3个文档ID
-        doc_list_text = "，".join(str_doc_ids[:3])
-        if len(document_ids) > 5:
-            doc_list_text += f"等{len(document_ids)}个文档"
+        # 显示最多前5个文档ID
+        doc_list_text = "，".join(str_doc_ids[:5])
             
-        return f"相关文档: {doc_list_text}"
+        return f"related documents: {doc_list_text}"
 
     def process_query(self, query, retrieval_method):
         """
@@ -472,16 +473,16 @@ class WebUI:
                     with gr.Column(scale=4):
                         # 答案显示区域
                         answer_output = gr.Textbox(
-                            label="回答", 
+                            label="answer", 
                             lines=6,
-                            value="模型已加载完成，请输入问题并点击提交。"
+                            value="model loaded, please input question and click submit."
                         )
                         
                         # 相关文档显示区域
                         context_output = gr.Textbox(
-                            label="相关文档", 
+                            label="related documents", 
                             lines=10,
-                            value="等待输入..."
+                            value="waiting for input..."
                         )
                 
                 # 设置提交按钮功能

@@ -109,20 +109,12 @@ class Compass:
             info(f"[Compass] 加载文本检索参数 - 方法: {params['method']}, 混合比例: {params['hybrid_alpha']}")
             
         elif method_type == "deep_embedding":
-            from dpr import compass
-            method = compass.choose_embedding_method()
-            if method == "train_dpr":
-                warning(f"[Evaluation] Evaluation mode is not supported in DPR training mode")
-                sys.exit(1)
-            elif method == "dpr":
-                pass
-            elif method == "bge_m3":
-                deep_config = self.retrieval_config.get("deep_retrieval", {})
-                m3_config = deep_config.get("api_embedding", {})
-                params["model"] = m3_config.get("model", "BAAI/bge-m3")
-                params["api_key"] = m3_config.get("api_key", "sk-proj-1234567890")
-                params["doc_path"] = m3_config.get("doc_path", "./data/processed_data/processed_plain.jsonl")
-                params["intermediate_path"] = m3_config.get("intermediate_path", "./cache/bge_m3_intermediate")
+            deep_config = self.retrieval_config.get("deep_retrieval", {})
+            m3_config = deep_config.get("api_embedding", {})
+            params["model"] = m3_config.get("model", "BAAI/bge-m3")
+            params["api_key"] = m3_config.get("api_key", "sk-proj-1234567890")
+            params["doc_path"] = m3_config.get("doc_path", "./data/processed_data/processed_plain.jsonl")
+            params["intermediate_path"] = m3_config.get("intermediate_path", "./cache/bge_m3_intermediate")
         elif method_type == "hybrid":
             print("需要进一步完善")
             pass
@@ -340,200 +332,36 @@ class Compass:
     
     def evaluate_deep_embedding(self):
         """评估深度嵌入检索方法"""
-        info(f"[Compass] 开始深度嵌入检索评估")
-        start_time = time.time()
+        retrieval_config = self.config.get("retrieval", {})
+        m3_config = retrieval_config.get("deep_retrieval", {}).get("bgem3", {})
+        import pandas as pd
+        query_path = m3_config.get("result_path", "./data/result/val_query_vectors.jsonl")
+        combine = pd.read_json(query_path, lines=True)
+        question = combine.question.tolist()
+        vector = combine.vector.tolist()
+        from faiss_composer.base import FaissQuery
+        faiss_path = m3_config.get("faiss_path", "./cache/faiss/bgem3.faiss")
+        top_k = retrieval_config.get("top_k", 5)
 
-        # 从DPR模块导入Compass并选择嵌入方法
-        from dpr.compass import Compass as DPRCompass
-        method = DPRCompass(self.config_path).choose_embedding_method()
-        
-        if method == "train_dpr":
-            warning(f"[Compass] 评估模式不支持DPR训练模式")
-            print("评估模式不支持DPR训练模式，请选择其他嵌入方法。")
-            sys.exit(1)
-        
-        # 获取嵌入检索参数
-        embedding_params = self.get_retrieval_params("deep_embedding")
-        
-        # 处理文件路径
-        data_output_dir = self.config.get("data", {}).get("data_output_dir", "./data/processed_data/")
-        val_path = self.config.get("data", {}).get("val_path", "./data/original_data/val.jsonl")
-        
-        # 确保路径以 / 结尾
-        if not data_output_dir.endswith("/"):
-            data_output_dir += "/"
-            
-        # 转换为绝对路径
-        data_output_dir = os.path.abspath(data_output_dir)
-        val_path = os.path.abspath(val_path)
-        
-        debug(f"[Compass] 绝对路径 - 数据输出目录: {data_output_dir}")
-        debug(f"[Compass] 绝对路径 - 验证集路径: {val_path}")
-        
-        output_path = None
-        
-        if method == "bge_m3":
-            info(f"[Compass] 使用BGE-M3 API嵌入模型进行评估")
-            
-            # 获取BGE-M3专用参数
-            model_name = embedding_params.get("model", "BAAI/bge-m3")
-            api_key = embedding_params.get("api_key", "")
-            doc_path = embedding_params.get("doc_path", "./data/processed_data/processed_plain.jsonl")
-            intermediate_path = embedding_params.get("intermediate_path", "./cache/bge_m3_intermediate")
-            top_k = embedding_params.get("top_k", 5)
-            max_words = embedding_params.get("max_words", 50)
-            
-            # 创建输出目录
-            output_dir = os.path.dirname(data_output_dir)
-            if not os.path.exists(output_dir):
-                debug(f"[Compass] 创建输出目录: {output_dir}")
-                os.makedirs(output_dir, exist_ok=True)
-            
-            # 定义输出路径
-            output_path = self.eval_config.get("output", {}).get("deep_embedding", 
-                              os.path.join(data_output_dir, f"bge_m3_evaluation_results.jsonl"))
-            
-            info(f"[Compass] 评估结果将保存至: {output_path}")
-            
-            # 检查输出文件是否已存在
-            if os.path.exists(output_path):
-                info(f"[Compass] 发现已有评估结果: {output_path}")
-                
-                # 检查文件是否有内容
-                try:
-                    with open(output_path, 'r', encoding='utf-8') as f:
-                        first_line = f.readline().strip()
-                    
-                    if first_line:
-                        info(f"[Compass] 跳过评估过程，直接使用已有结果计算指标")
-                        # 直接跳到指标计算部分
-                        calculate_metrics = self.eval_config.get("metrics", {}).get("calculate", False)
-                        if calculate_metrics:
-                            self._calculate_metrics(output_path)
-                        
-                        info(f"[Compass] BGE-M3评估流程完成")
-                        return output_path
-                    else:
-                        info(f"[Compass] 已有结果文件为空，将重新执行评估过程")
-                except Exception as e:
-                    warning(f"[Compass] 检查已有结果文件时出错: {str(e)}，将重新执行评估过程")
-            
-            # 导入必要的类
-            from dpr.vectorizer import doc_vectorizer, query_vectorizer
-            from dpr.jsonler import doc_jsonler, query_jsonler
-            
-            # 创建中间目录
-            if not os.path.exists(intermediate_path):
-                debug(f"[Compass] 创建中间文件目录: {intermediate_path}")
-                os.makedirs(intermediate_path, exist_ok=True)
-                
-            # 加载文档
-            info(f"[Compass] 加载文档: {doc_path}")
-            doc_loader = doc_jsonler(doc_path)
-            doc_ids, contexts = doc_loader.get_json_data()
-            info(f"[Compass] 成功加载 {len(doc_ids)} 个文档")
-            
-            # 加载验证集问题
-            info(f"[Compass] 加载验证集问题: {val_path}")
-            query_loader = query_jsonler(val_path)
-            queries = query_loader.get_json_data()
-            query_data = []
-            
-            # 加载完整的验证集数据以获取参考文档ID
-            with open(val_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        query_data.append(json.loads(line))
-            
-            info(f"[Compass] 成功加载 {len(queries)} 个问题")
-            
-            # 检查中间文件是否存在
-            doc_vector_path = os.path.join(intermediate_path, "doc_vectors.json")
-            doc_embedding_exists = os.path.exists(doc_vector_path)
-            
-            # 生成或加载文档向量
-            if doc_embedding_exists:
-                info(f"[Compass] 加载已有文档向量: {doc_vector_path}")
-                with open(doc_vector_path, 'r', encoding='utf-8') as f:
-                    doc_vectors_data = json.load(f)
-                    doc_vectors = doc_vectors_data.get("vectors", [])
-            else:
-                info(f"[Compass] 生成文档向量，使用模型: {model_name}")
-                doc_vec = doc_vectorizer(doc_ids, contexts, api_key, model_name)
-                _, doc_vectors = doc_vec.vectorize()
-                
-                # 保存文档向量
-                with open(doc_vector_path, 'w', encoding='utf-8') as f:
-                    json.dump({"vectors": doc_vectors}, f)
-                info(f"[Compass] 文档向量已保存至: {doc_vector_path}")
-            
-            # 生成查询向量并执行评估
-            info(f"[Compass] 生成查询向量，使用模型: {model_name}")
-            query_vec = query_vectorizer(queries, api_key, model_name)
-            query_vectors = query_vec.vectorize()
-            
-            # 存储评估结果
-            results = []
-            import numpy as np
-            from tqdm import tqdm
-            
-            # 将向量转换为numpy数组以加速计算
-            doc_vectors_np = np.array(doc_vectors)
-            
-            # 评估每个查询
-            info(f"[Compass] 开始评估，计算相似度并排序")
-            for i, (query, query_vector) in enumerate(tqdm(zip(queries, query_vectors), total=len(queries))):
-                # 使用点积计算相似度
-                query_vector_np = np.array(query_vector)
-                similarities = np.dot(doc_vectors_np, query_vector_np)
-                
-                # 获取相似度最高的top_k个文档
-                top_indices = similarities.argsort()[-top_k:][::-1]
-                pred_doc_ids = [doc_ids[idx] for idx in top_indices]
-                
-                # 提取答案
-                answer = ""
-                if pred_doc_ids and len(pred_doc_ids) > 0:
-                    doc_text = contexts[doc_ids.index(pred_doc_ids[0])]
-                    import re
-                    # 简单截取前max_words个词作为答案
-                    words = re.findall(r'\w+', doc_text)
-                    answer = ' '.join(words[:max_words])
-                
-                # 记录结果
-                result = {
-                    "question": query,
-                    "answer": answer,
-                    "document_id": pred_doc_ids
-                }
-                results.append(result)
-            
-            # 保存结果
-            info(f"[Compass] 保存评估结果: {output_path}")
-            with open(output_path, "w", encoding="utf-8") as f:
-                for result in results:
-                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
-            
-            info(f"[Compass] 评估完成，耗时: {time.time() - start_time:.2f}秒")
-            
-        elif method == "dpr":
-            info(f"[Compass] DPR本地嵌入模型评估暂未实现")
-            print("DPR本地嵌入模型评估功能尚未实现，请使用BGE-M3 API嵌入模型。")
-            return None
-        
-        # 如果配置了计算评估指标且有输出结果
-        if output_path:
-            calculate_metrics = self.eval_config.get("metrics", {}).get("calculate", False)
-            if calculate_metrics:
-                self._calculate_metrics(output_path)
-        
-        info(f"[Compass] 深度嵌入检索评估流程完成")
-        return output_path
+        eval_config = retrieval_config.get("evaluation", {})
+        eval_path = eval_config.get("output", {}).get("deep_embedding", "./data/evaluation/deep_embedding_evaluation_results.jsonl")
+        for i in range(len(question)):
+            faiss_query = FaissQuery([vector[i]], top_k=top_k, faiss_path=faiss_path)
+            doc_ids, scores = faiss_query.query()
+            for doc_id in doc_ids:
+                doc_ids[doc_ids.index(doc_id)] = int(doc_id)
+            dict = {
+                "question": question[i],
+                "answer": "Placeholder",
+                "document_id": doc_ids,
+            }
+            with open(eval_path, "a") as f: 
+                json.dump(dict, f)
+                f.write("\n")
     
     def evaluate_hybrid(self):
         """评估混合检索方法"""
         info(f"[Compass] 混合检索评估功能已被移除")
-        warning(f"[Compass] 混合检索功能依赖于DPR，已被一并移除")
         print("混合检索评估功能已被移除，请联系系统管理员获取更多信息。")
         return None
     
