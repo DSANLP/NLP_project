@@ -29,7 +29,7 @@ class QwenChatClient:
             "model": kwargs.get("model", "Qwen/Qwen2.5-7B-Instruct"),
             "stream": kwargs.get("stream", False),
             "max_tokens": kwargs.get("max_tokens", 4096),
-            "temperature": kwargs.get("temperature", 0.7),
+            "temperature": kwargs.get("temperature", 0.5),
             "top_p": kwargs.get("top_p", 0.7),
             "top_k": kwargs.get("top_k", 50),
             "frequency_penalty": kwargs.get("frequency_penalty", 0.5),
@@ -61,7 +61,7 @@ class QwenChatClient:
             "model": kwargs.get("model", "Qwen/Qwen2.5-7B-Instruct"),
             "stream": kwargs.get("stream", False),
             "max_tokens": kwargs.get("max_tokens", 4096),
-            "temperature": kwargs.get("temperature", 0.7),
+            "temperature": kwargs.get("temperature", 0.5),
             "top_p": kwargs.get("top_p", 0.7),
             "top_k": kwargs.get("top_k", 50),
             "frequency_penalty": kwargs.get("frequency_penalty", 0.5),
@@ -191,6 +191,7 @@ class QwenChatClient:
             for choice in choices:
                 message = choice.get("message", {})
                 content = message.get("content", "")
+                print("DEBUG - Original response content:", content)
                 answer = re.search(r"<answer>(.*?)</answer>", content)
                 answers.append(answer.group(1) if answer else "")
             extracted_answers.append(answers)
